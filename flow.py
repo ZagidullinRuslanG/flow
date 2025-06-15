@@ -209,7 +209,23 @@ Available tools:
        relative_workspace_path: utils
    - Result: Returns a tree visualization of the directory structure
 
-7. finish: End the process and provide final response
+7. create_directory: Create a new directory
+   - Parameters: target_dir (path)
+   - Example:
+     tool: create_directory
+     reason: I need to create a directory for storing configuration files
+     params:
+       target_dir: config
+
+8. delete_directory: Remove a directory and all its contents
+   - Parameters: target_dir (path)
+   - Example:
+     tool: delete_directory
+     reason: I need to remove the temporary build directory and all its contents
+     params:
+       target_dir: build
+
+9. finish: End the process and provide final response
    - No parameters required
    - Example:
      tool: finish
@@ -834,6 +850,113 @@ def create_edit_agent() -> Flow:
     return Flow(start=read_target)
 
 #############################################
+# Create Directory Action Node
+#############################################
+class CreateDirectoryAction(Node):
+    def prep(self, shared: Dict[str, Any]) -> str:
+        # Get parameters from the last history entry
+        history = shared.get("history", [])
+        if not history:
+            raise ValueError("No history found")
+        
+        last_action = history[-1]
+        dir_path = last_action["params"].get("target_dir")
+        
+        if not dir_path:
+            raise ValueError("Missing target_dir parameter")
+        
+        # Use the reason for logging instead of explanation
+        reason = last_action.get("reason", "No reason provided")
+        logger.info(f"CreateDirectoryAction: {reason}")
+        
+        # Ensure path is relative to working directory
+        working_dir = shared.get("working_dir", "")
+        full_path = os.path.join(working_dir, dir_path) if working_dir else dir_path
+        
+        return full_path
+    
+    def exec(self, dir_path: str) -> Tuple[bool, str]:
+        try:
+            # Create directory and all necessary parent directories
+            os.makedirs(dir_path, exist_ok=True)
+            return True, f"Successfully created directory: {dir_path}"
+        except Exception as e:
+            logger.error(f"Failed to create directory {dir_path}: {str(e)}")
+            return False, f"Failed to create directory: {str(e)}"
+    
+    def post(self, shared: Dict[str, Any], prep_res: str, exec_res: Tuple[bool, str]) -> str:
+        success, message = exec_res
+        
+        # Update the result in the last history entry
+        history = shared.get("history", [])
+        if history:
+            history[-1]["result"] = {
+                "success": success,
+                "message": message
+            }
+        
+        # Return default action to continue flow
+        return "default"
+
+#############################################
+# Delete Directory Action Node
+#############################################
+class DeleteDirectoryAction(Node):
+    def prep(self, shared: Dict[str, Any]) -> str:
+        # Get parameters from the last history entry
+        history = shared.get("history", [])
+        if not history:
+            raise ValueError("No history found")
+        
+        last_action = history[-1]
+        dir_path = last_action["params"].get("target_dir")
+        
+        if not dir_path:
+            raise ValueError("Missing target_dir parameter")
+        
+        # Use the reason for logging instead of explanation
+        reason = last_action.get("reason", "No reason provided")
+        logger.info(f"DeleteDirectoryAction: {reason}")
+        
+        # Ensure path is relative to working directory
+        working_dir = shared.get("working_dir", "")
+        full_path = os.path.join(working_dir, dir_path) if working_dir else dir_path
+        
+        return full_path
+    
+    def exec(self, dir_path: str) -> Tuple[bool, str]:
+        try:
+            # Check if directory exists
+            if not os.path.exists(dir_path):
+                return False, f"Directory does not exist: {dir_path}"
+            
+            # Check if it's actually a directory
+            if not os.path.isdir(dir_path):
+                return False, f"Path is not a directory: {dir_path}"
+            
+            # Remove directory and all its contents
+            import shutil
+            shutil.rmtree(dir_path)
+            return True, f"Successfully deleted directory and its contents: {dir_path}"
+        except Exception as e:
+            logger.error(f"Failed to delete directory {dir_path}: {str(e)}")
+            return False, f"Failed to delete directory: {str(e)}"
+    
+    def post(self, shared: Dict[str, Any], prep_res: str, exec_res: Tuple[bool, str]) -> str:
+        success, message = exec_res
+        
+        # Update the result in the last history entry
+        history = shared.get("history", [])
+        if history:
+            history[-1]["result"] = {
+                "success": success,
+                "message": message
+            }
+        
+        # Return default action to continue flow
+        return "default"
+
+#############################################
 # Main Flow
 #############################################
 def create_main_flow() -> Flow:
@@ -846,6 +969,8 @@ def create_main_flow() -> Flow:
     insert_action = InsertFileAction()
     edit_agent = create_edit_agent()
     format_response = FormatResponseNode()
+    create_dir_action = CreateDirectoryAction()
+    delete_dir_action = DeleteDirectoryAction()  # Add new node
     
     # Connect main agent to action nodes
     main_agent - "read_file" >> read_action
@@ -854,6 +979,8 @@ def create_main_flow() -> Flow:
     main_agent - "delete_file" >> delete_action
     main_agent - "insert_file" >> insert_action
     main_agent - "edit_file" >> edit_agent
+    main_agent - "create_directory" >> create_dir_action
+    main_agent - "delete_directory" >> delete_dir_action  # Add new connection
     main_agent - "finish" >> format_response
     
     # Connect action nodes back to main agent using default action
@@ -863,6 +990,8 @@ def create_main_flow() -> Flow:
     delete_action >> main_agent
     insert_action >> main_agent
     edit_agent >> main_agent
+    create_dir_action >> main_agent
+    delete_dir_action >> main_agent  # Add new connection
     
     # Create flow
     flow = Flow(start=main_agent)
