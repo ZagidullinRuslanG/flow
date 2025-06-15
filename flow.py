@@ -109,34 +109,61 @@ class MainDecisionAgent(Node):
         user_query = shared.get("user_query", "")
         history = shared.get("history", [])
         
-        # Initialize or increment iteration counter
-        shared["iteration_count"] = shared.get("iteration_count", 0) + 1
+        # Increment iteration counter
+        iteration_count = shared.get("iteration_count", 0) + 1
+        shared["iteration_count"] = iteration_count
         
-        # Check if we've exceeded the maximum number of iterations
-        max_iterations = shared.get("max_iterations", 10)  # Default to 10 iterations
-        if shared["iteration_count"] > max_iterations:
-            logger.warning(f"Maximum number of iterations ({max_iterations}) exceeded")
-            return "max_iterations_exceeded", history
+        # Check iteration limit
+        max_iterations = shared.get("max_iterations", 30)
+        if iteration_count > max_iterations:
+            logger.warning(f"Reached maximum iterations ({max_iterations})")
+            return "finish", history
         
         return user_query, history
     
     def exec(self, inputs: Tuple[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
         user_query, history = inputs
         
-        # If we've exceeded iterations, return finish action
-        if user_query == "max_iterations_exceeded":
+        # Format history for the prompt
+        history_str = ""
+        if history:
+            history_str = "Previous actions:\n"
+            for i, action in enumerate(history, 1):
+                history_str += f"{i}. {action.get('tool', 'unknown')}: {action.get('reason', 'No reason')}\n"
+                if "result" in action:
+                    result = action["result"]
+                    if isinstance(result, dict):
+                        if "success" in result:
+                            history_str += f"   Success: {result['success']}\n"
+                        if "message" in result:
+                            history_str += f"   Message: {result['message']}\n"
+                        if "content" in result:
+                            history_str += f"   Content length: {len(result['content'])} chars\n"
+                        if "tree_visualization" in result:
+                            history_str += f"   Directory structure:\n{result['tree_visualization']}\n"
+                    else:
+                        history_str += f"   Result: {result}\n"
+        
+        # Check if this is a project generation request
+        is_project_generation = any(keyword in user_query.lower() for keyword in [
+            "create react app",
+            "create react application",
+            "generate react app",
+            "generate react application",
+            "create react project",
+            "generate react project",
+            "create react structure",
+            "generate react structure"
+        ])
+        
+        if is_project_generation:
             return {
-                "tool": "finish",
-                "reason": f"Maximum number of iterations exceeded. Stopping to prevent infinite loop.",
+                "tool": "generate_project",
+                "reason": "Generating complete React application structure",
                 "params": {}
             }
-            
-        logger.info(f"MainDecisionAgent: Analyzing user query: {user_query} (iteration {shared.get('iteration_count', 0)})")
-
-        # Format history using the utility function with 'basic' detail level
-        history_str = format_history_summary(history)
         
-        # Create prompt for the LLM using YAML instead of JSON
+        # Regular tool selection prompt
         prompt = f"""You are a coding assistant that helps modify and navigate code. You have full access to codebase. Given the following request, 
 decide which tool to use from the available options.
 
@@ -184,14 +211,20 @@ Available tools:
      params:
        target_file: temp.txt
        
-4. insert_file: Remove a file
-   - Parameters: target_file (path)
+4. insert_file: Create a new file
+   - Parameters: 
+     - target_file (path)
+     - content (string, required) - The content to write to the file
    - Example:
      tool: insert_file
-     reason: Create a new file
+     reason: Create a new file with initial content
      params:
-       target_file: temp.txt
-       content: file content
+       target_file: new_file.txt
+       content: |
+         This is the content
+         of the new file
+         with multiple lines
+         using YAML pipe operator (|)
 
 5. grep_search: Search for patterns in files
    - Parameters: query, case_sensitive (optional), include_pattern (optional), exclude_pattern (optional)
@@ -219,75 +252,49 @@ Available tools:
      reason: I have completed the requested task of finding all logger instances
      params: {{}}
 
-Respond with a YAML object containing:
+8. generate_project: Generate a complete project structure
+   - No parameters required
+   - Example:
+     tool: generate_project
+     reason: Generating a complete React application structure
+     params: {{}}
+
+Return a YAML object with the following structure:
 ```yaml
-tool: one of: read_file, edit_file, delete_file, insert_file, grep_search, list_dir, finish
-reason: |
-  detailed explanation of why you chose this tool and what you intend to do
-  if you chose finish, explain why no more actions are needed
+tool: <tool_name>
+reason: <explanation of why this tool was chosen>
 params:
-  # parameters specific to the chosen tool
+  <tool specific parameters>
 ```
 
-If you believe no more actions are needed, use "finish" as the tool and explain why in the reason.
+Choose the most appropriate tool based on the user's request and previous actions.
 """
         
-        # Call LLM to decide action
+        # Call LLM to decide which tool to use
         response = call_llm(prompt)
-
-        # Look for YAML structure in the response
-        yaml_content = ""
-        if "```yaml" in response:
-            yaml_blocks = response.split("```yaml")
-            if len(yaml_blocks) > 1:
-                yaml_content = yaml_blocks[1].split("```")[0].strip()
-        elif "```yml" in response:
-            yaml_blocks = response.split("```yml")
-            if len(yaml_blocks) > 1:
-                yaml_content = yaml_blocks[1].split("```")[0].strip()
-        elif "```" in response:
-            # Try to extract from generic code block
-            yaml_blocks = response.split("```")
-            if len(yaml_blocks) > 1:
-                yaml_content = yaml_blocks[1].strip()
-        else:
-            # If no code blocks, try to use the entire response
-            yaml_content = response.strip()
         
-        if yaml_content:
-            decision = yaml.safe_load(yaml_content)
-            
-            # Validate the required fields
-            assert "tool" in decision, "Tool name is missing"
-            assert "reason" in decision, "Reason is missing"
-            
-            # For tools other than "finish", params must be present
-            if decision["tool"] != "finish":
-                assert "params" in decision, "Parameters are missing"
-            else:
-                decision["params"] = {}
+        try:
+            # Parse YAML response
+            decision = yaml.safe_load(response)
+            if not decision or "tool" not in decision:
+                raise ValueError("Invalid tool decision format")
             
             return decision
-        else:
-            raise ValueError("No YAML object found in response")
+        except Exception as e:
+            logger.error(f"Failed to parse tool decision: {str(e)}")
+            return {
+                "tool": "finish",
+                "reason": f"Error parsing tool decision: {str(e)}",
+                "params": {}
+            }
     
-    def post(self, shared: Dict[str, Any], prep_res: Any, exec_res: Dict[str, Any]) -> str:
-        logger.info(f"MainDecisionAgent: Selected tool: {exec_res['tool']}")
+    def post(self, shared: Dict[str, Any], prep_res: Tuple[str, List[Dict[str, Any]]], exec_res: Dict[str, Any]) -> str:
+        # Add the decision to history
+        history = shared.get("history", [])
+        history.append(exec_res)
+        shared["history"] = history
         
-        # Initialize history if not present
-        if "history" not in shared:
-            shared["history"] = []
-        
-        # Add this action to history
-        shared["history"].append({
-            "tool": exec_res["tool"],
-            "reason": exec_res["reason"],
-            "params": exec_res.get("params", {}),
-            "result": None,  # Will be filled in by action nodes
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Return the action to take
+        # Return the next action based on the tool
         return exec_res["tool"]
 
 #############################################
@@ -849,6 +856,137 @@ def create_edit_agent() -> Flow:
     return Flow(start=read_target)
 
 #############################################
+# Project Structure Generator Node
+#############################################
+class ProjectStructureGeneratorNode(Node):
+    def prep(self, shared: Dict[str, Any]) -> Dict[str, Any]:
+        # Get the user query and project type from shared
+        user_query = shared.get("user_query", "")
+        
+        # Parse the query to determine project type and structure
+        prompt = f"""
+Analyze the following project generation request and determine the project structure.
+Return a YAML object with the following structure:
+
+```yaml
+project_type: <type>  # e.g., "react", "rest_api", etc.
+structure:
+  - path: <file_path>
+    content: |
+      <file_content>
+    type: <file_type>  # e.g., "config", "component", "test", etc.
+  - path: <file_path>
+    content: |
+      <file_content>
+    type: <file_type>
+```
+
+Rules:
+1. Include ALL necessary files for a complete project structure
+2. For each file, provide the complete content
+3. Group related files together
+4. Include configuration files first
+5. Follow best practices for the project type
+6. Include comments and documentation
+
+User request: {user_query}
+
+Return ONLY the YAML object with the project structure.
+"""
+        
+        # Call LLM to generate project structure
+        response = call_llm(prompt)
+        
+        try:
+            # Parse YAML response
+            project_structure = yaml.safe_load(response)
+            if not project_structure or "structure" not in project_structure:
+                raise ValueError("Invalid project structure format")
+            
+            return project_structure
+        except Exception as e:
+            logger.error(f"Failed to parse project structure: {str(e)}")
+            raise
+    
+    def exec(self, project_structure: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # Return the list of files to create
+        return project_structure["structure"]
+    
+    def post(self, shared: Dict[str, Any], prep_res: Dict[str, Any], exec_res: List[Dict[str, Any]]) -> str:
+        # Store the project structure in shared for batch processing
+        shared["project_structure"] = exec_res
+        return "generate_files"
+
+#############################################
+# Batch File Generator Node
+#############################################
+class BatchFileGeneratorNode(BatchNode):
+    def prep(self, shared: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # Get the project structure from shared
+        project_structure = shared.get("project_structure", [])
+        if not project_structure:
+            logger.warning("No project structure found")
+            return []
+        
+        # Get working directory
+        working_dir = shared.get("working_dir", "")
+        
+        # Prepare file creation operations
+        operations = []
+        for file_info in project_structure:
+            path = file_info["path"]
+            content = file_info["content"]
+            file_type = file_info["type"]
+            
+            # Ensure path is relative to working directory
+            full_path = os.path.join(working_dir, path) if working_dir else path
+            
+            operations.append({
+                "target_file": full_path,
+                "content": content,
+                "type": file_type
+            })
+        
+        return operations
+    
+    def exec(self, op: Dict[str, Any]) -> Tuple[bool, str]:
+        # Create directory if it doesn't exist
+        target_file = op["target_file"]
+        os.makedirs(os.path.dirname(target_file), exist_ok=True)
+        
+        # Create the file
+        return insert_file(target_file, op["content"])
+    
+    def post(self, shared: Dict[str, Any], prep_res: List[Dict[str, Any]], exec_res_list: List[Tuple[bool, str]]) -> str:
+        # Check if all operations were successful
+        all_successful = all(success for success, _ in exec_res_list)
+        
+        # Format results for history
+        result_details = [
+            {
+                "success": success,
+                "message": message,
+                "file": op["target_file"],
+                "type": op["type"]
+            }
+            for (success, message), op in zip(exec_res_list, prep_res)
+        ]
+        
+        # Update history with generation results
+        history = shared.get("history", [])
+        if history:
+            history[-1]["result"] = {
+                "success": all_successful,
+                "operations": len(exec_res_list),
+                "details": result_details
+            }
+        
+        # Clear project structure after processing
+        shared.pop("project_structure", None)
+        
+        return "default"
+
+#############################################
 # Main Flow
 #############################################
 def create_main_flow() -> Flow:
@@ -861,6 +999,8 @@ def create_main_flow() -> Flow:
     insert_action = InsertFileAction()
     edit_agent = create_edit_agent()
     format_response = FormatResponseNode()
+    project_generator = ProjectStructureGeneratorNode()
+    batch_generator = BatchFileGeneratorNode()
     
     # Connect main agent to action nodes
     main_agent - "read_file" >> read_action
@@ -869,7 +1009,11 @@ def create_main_flow() -> Flow:
     main_agent - "delete_file" >> delete_action
     main_agent - "insert_file" >> insert_action
     main_agent - "edit_file" >> edit_agent
+    main_agent - "generate_project" >> project_generator
     main_agent - "finish" >> format_response
+    
+    # Connect project generator to batch generator
+    project_generator - "generate_files" >> batch_generator
     
     # Connect action nodes back to main agent using default action
     read_action >> main_agent
@@ -878,10 +1022,11 @@ def create_main_flow() -> Flow:
     delete_action >> main_agent
     insert_action >> main_agent
     edit_agent >> main_agent
+    batch_generator >> main_agent
     
-    # Create flow with iteration limit
+    # Create flow with increased iteration limit for project generation
     flow = Flow(start=main_agent)
-    flow.set_params({"max_iterations": 10})  # Set default max iterations
+    flow.set_params({"max_iterations": 30})  # Increased limit for project generation
     return flow
 
 # Create the main flow

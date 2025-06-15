@@ -1,0 +1,59 @@
+title: "Create a REST API with FastAPI"
+category: "create"
+subcategory: "web_apps"
+difficulty: "intermediate"
+description: |
+  This prompt helps create a new REST API using FastAPI framework with proper
+  structure, error handling, and basic CRUD operations. It includes setup of
+  database models, API endpoints, and basic documentation.
+
+example: |
+  Create a REST API for a task management system with the following requirements:
+  
+  1. Use FastAPI framework with Python 3.9+
+  2. Implement SQLAlchemy for database operations
+  3. Include the following endpoints:
+     - GET /tasks - List all tasks
+     - POST /tasks - Create new task
+     - GET /tasks/{task_id} - Get task details
+     - PUT /tasks/{task_id} - Update task
+     - DELETE /tasks/{task_id} - Delete task
+  4. Each task should have:
+     - id (auto-generated)
+     - title (string)
+     - description (text)
+     - status (enum: pending, in_progress, completed)
+     - created_at (datetime)
+     - updated_at (datetime)
+  5. Include proper error handling and validation
+  6. Add OpenAPI documentation
+  7. Include basic authentication
+  8. Add logging
+  9. Create requirements.txt and README.md
+
+expected_outcome: |
+  The assistant will:
+  1. Create a proper project structure
+  2. Set up FastAPI application with middleware
+  3. Create database models and schemas
+  4. Implement CRUD operations
+  5. Add authentication middleware
+  6. Set up logging
+  7. Create configuration files
+  8. Add documentation
+  9. Provide instructions for running the application
+
+notes: |
+  - Make sure to specify the Python version you want to use
+  - You can customize the task model fields based on your needs
+  - Consider adding additional features like:
+    - Task filtering and sorting
+    - User management
+    - Task categories or tags
+    - File attachments
+  - For production, consider adding:
+    - Database migrations
+    - Environment configuration
+    - Docker setup
+    - CI/CD pipeline
+    - Unit tests 

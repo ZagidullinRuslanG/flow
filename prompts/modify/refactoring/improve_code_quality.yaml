@@ -1,0 +1,66 @@
+title: "Improve Code Quality and Maintainability"
+category: "modify"
+subcategory: "refactoring"
+difficulty: "intermediate"
+description: |
+  This prompt helps improve the quality and maintainability of existing code
+  by applying various refactoring techniques, following best practices, and
+  improving code organization.
+
+example: |
+  Please help improve the quality of the following code by:
+  
+  1. Applying SOLID principles where applicable
+  2. Improving code organization and structure
+  3. Adding proper error handling
+  4. Improving type hints and documentation
+  5. Reducing code duplication
+  6. Making the code more testable
+  7. Following PEP 8 style guide
+  
+  The code is in the following files:
+  - src/models/user.py
+  - src/services/auth.py
+  - src/utils/helpers.py
+  
+  Current issues to address:
+  - Complex nested conditionals in auth.py
+  - Duplicate validation logic across files
+  - Missing type hints in several functions
+  - Inconsistent error handling
+  - Long functions that do multiple things
+  - Lack of proper documentation
+  - No separation of concerns in some classes
+
+expected_outcome: |
+  The assistant will:
+  1. Analyze the current code structure
+  2. Identify areas for improvement
+  3. Propose specific refactoring changes
+  4. Implement the changes with:
+     - Better code organization
+     - Proper type hints
+     - Comprehensive documentation
+     - Consistent error handling
+     - Improved testability
+     - Better separation of concerns
+  5. Explain the reasoning behind each change
+  6. Ensure backward compatibility
+  7. Provide before/after examples
+
+notes: |
+  - Make sure to specify which parts of the code should not be changed
+  - Consider the impact of changes on existing tests
+  - If the code is in production, consider:
+     - Making changes incrementally
+     - Adding new tests before refactoring
+     - Planning for backward compatibility
+     - Documenting breaking changes
+  - Common improvements to request:
+     - Extract complex logic into separate functions
+     - Create proper abstractions
+     - Implement proper dependency injection
+     - Add comprehensive logging
+     - Improve configuration management
+     - Add performance optimizations
+     - Implement proper caching strategies 

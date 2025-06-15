@@ -1,0 +1,91 @@
+title: "Perform Security Code Audit"
+category: "review"
+subcategory: "security"
+difficulty: "advanced"
+description: |
+  This prompt helps perform a comprehensive security audit of the codebase,
+  identifying potential security vulnerabilities, suggesting improvements,
+  and ensuring best security practices are followed.
+
+example: |
+  Please perform a security audit of the following codebase focusing on:
+  
+  1. Authentication and Authorization:
+     - Review user authentication mechanisms
+     - Check authorization checks
+     - Analyze session management
+     - Review password handling
+     - Check for proper role-based access control
+  
+  2. Data Security:
+     - Review data encryption methods
+     - Check secure storage of sensitive data
+     - Analyze data transmission security
+     - Review API security
+     - Check for proper input validation
+  
+  3. Common Vulnerabilities:
+     - SQL injection prevention
+     - Cross-site scripting (XSS)
+     - Cross-site request forgery (CSRF)
+     - Command injection
+     - File upload vulnerabilities
+     - Insecure deserialization
+  
+  4. Security Best Practices:
+     - Review error handling and logging
+     - Check for hardcoded credentials
+     - Analyze dependency security
+     - Review security headers
+     - Check for proper CORS configuration
+  
+  The codebase is located in:
+  - src/auth/
+  - src/api/
+  - src/models/
+  - src/utils/
+  - config/
+
+expected_outcome: |
+  The assistant will:
+  1. Perform a thorough security analysis
+  2. Identify potential vulnerabilities
+  3. Provide a detailed report including:
+     - List of identified issues
+     - Severity level for each issue
+     - Potential impact
+     - Recommended fixes
+     - Code examples for improvements
+  4. Suggest security improvements
+  5. Provide implementation guidance
+  6. Recommend security tools and practices
+  7. Create a security checklist for future development
+
+notes: |
+  - Consider the application's context and threat model
+  - Pay special attention to:
+     - User input handling
+     - Authentication flows
+     - Data encryption
+     - API security
+     - File operations
+     - Third-party dependencies
+  - Common areas to review:
+     - Password policies
+     - Session management
+     - API authentication
+     - Data validation
+     - Error messages
+     - Logging practices
+     - Configuration security
+  - Consider using automated security tools:
+     - Static code analysis
+     - Dependency scanning
+     - Security linters
+     - Penetration testing tools
+  - Remember to:
+     - Keep security patches up to date
+     - Follow security best practices
+     - Document security decisions
+     - Implement proper monitoring
+     - Have an incident response plan 

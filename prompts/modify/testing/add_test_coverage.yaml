@@ -1,0 +1,95 @@
+title: "Add Test Coverage to Existing Code"
+category: "modify"
+subcategory: "testing"
+difficulty: "intermediate"
+description: |
+  This prompt helps add comprehensive test coverage to existing code,
+  including unit tests, integration tests, and test fixtures. It focuses on
+  creating maintainable, well-structured tests that verify both happy paths
+  and edge cases.
+
+example: |
+  Please help add test coverage to the following codebase:
+  
+  1. Test Requirements:
+     - Use pytest as the testing framework
+     - Aim for at least 80% code coverage
+     - Include both unit and integration tests
+     - Test both success and failure cases
+     - Add proper test fixtures and mocks
+     - Follow testing best practices
+  
+  2. Files to test:
+     - src/models/user.py
+     - src/services/auth.py
+     - src/utils/helpers.py
+  
+  3. Key functionality to test:
+     - User model validation and CRUD operations
+     - Authentication and authorization flows
+     - Password hashing and verification
+     - Input validation and sanitization
+     - Error handling and edge cases
+     - Database interactions
+     - API endpoints (if any)
+  
+  4. Additional requirements:
+     - Add test configuration files
+     - Set up test database
+     - Add test utilities and helpers
+     - Include test documentation
+     - Add coverage reporting
+     - Create CI/CD test workflow
+
+expected_outcome: |
+  The assistant will:
+  1. Analyze the codebase structure
+  2. Create a test directory structure
+  3. Add test configuration files:
+     - pytest.ini
+     - conftest.py
+     - test requirements
+  4. Create test files for each module:
+     - test_user.py
+     - test_auth.py
+     - test_helpers.py
+  5. Implement test cases for:
+     - Unit tests
+     - Integration tests
+     - Edge cases
+     - Error conditions
+  6. Add test fixtures and mocks
+  7. Set up coverage reporting
+  8. Add test documentation
+  9. Provide instructions for running tests
+
+notes: |
+  - Consider the following when writing tests:
+     - Test isolation
+     - Proper mocking of external dependencies
+     - Database transaction management
+     - Test data cleanup
+     - Performance considerations
+  - Common test patterns to include:
+     - Setup and teardown
+     - Parameterized tests
+     - Fixture reuse
+     - Mocking external services
+     - Database transaction rollback
+  - Testing best practices:
+     - Follow AAA pattern (Arrange, Act, Assert)
+     - Use descriptive test names
+     - Keep tests focused and atomic
+     - Avoid test interdependence
+     - Use appropriate assertions
+  - Consider adding:
+     - Property-based testing
+     - Fuzzing tests
+     - Performance tests
+     - Security tests
+     - Load tests
+  - For CI/CD:
+     - Add test automation
+     - Set up coverage thresholds
+     - Configure test reporting
+     - Add test badges 
