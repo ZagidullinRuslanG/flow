@@ -76,7 +76,8 @@ if __name__ == "__main__":
         "prompts/review/security/security_audit.yaml"        # Security audit
     ]
     try:
-        query = load_prompt_from_file(prompt_files[1])
+        query = "Реструктуризируй файловую систему. расположи все по папкам, например front, back"
+        # query = load_prompt_from_file(prompt_files[1])
         logger.info("Successfully loaded prompt from file")
     except Exception as e:
         logger.error(f"Failed to load prompt: {str(e)}")

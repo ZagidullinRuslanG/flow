@@ -114,7 +114,7 @@ class MainDecisionAgent(Node):
         shared["iteration_count"] = iteration_count
         
         # Check iteration limit
-        max_iterations = shared.get("max_iterations", 30)
+        max_iterations = shared.get("max_iterations", 10)
         if iteration_count > max_iterations:
             logger.warning(f"Reached maximum iterations ({max_iterations})")
             return "finish", history
@@ -125,43 +125,7 @@ class MainDecisionAgent(Node):
         user_query, history = inputs
         
         # Format history for the prompt
-        history_str = ""
-        if history:
-            history_str = "Previous actions:\n"
-            for i, action in enumerate(history, 1):
-                history_str += f"{i}. {action.get('tool', 'unknown')}: {action.get('reason', 'No reason')}\n"
-                if "result" in action:
-                    result = action["result"]
-                    if isinstance(result, dict):
-                        if "success" in result:
-                            history_str += f"   Success: {result['success']}\n"
-                        if "message" in result:
-                            history_str += f"   Message: {result['message']}\n"
-                        if "content" in result:
-                            history_str += f"   Content length: {len(result['content'])} chars\n"
-                        if "tree_visualization" in result:
-                            history_str += f"   Directory structure:\n{result['tree_visualization']}\n"
-                    else:
-                        history_str += f"   Result: {result}\n"
-        
-        # Check if this is a project generation request
-        is_project_generation = any(keyword in user_query.lower() for keyword in [
-            "create react app",
-            "create react application",
-            "generate react app",
-            "generate react application",
-            "create react project",
-            "generate react project",
-            "create react structure",
-            "generate react structure"
-        ])
-        
-        if is_project_generation:
-            return {
-                "tool": "generate_project",
-                "reason": "Generating complete React application structure",
-                "params": {}
-            }
+        history_str = format_history_summary(history)
         
         # Regular tool selection prompt
         prompt = f"""You are a coding assistant that helps modify and navigate code. You have full access to codebase. Given the following request, 
@@ -252,13 +216,6 @@ Available tools:
      reason: I have completed the requested task of finding all logger instances
      params: {{}}
 
-8. generate_project: Generate a complete project structure
-   - No parameters required
-   - Example:
-     tool: generate_project
-     reason: Generating a complete React application structure
-     params: {{}}
-
 Return a YAML object with the following structure:
 ```yaml
 tool: <tool_name>
@@ -274,14 +231,35 @@ Choose the most appropriate tool based on the user's request and previous action
         response = call_llm(prompt)
         
         try:
+            # Extract YAML content from the response
+            yaml_content = ""
+            if "```yaml" in response:
+                yaml_blocks = response.split("```yaml")
+                if len(yaml_blocks) > 1:
+                    yaml_content = yaml_blocks[1].split("```")[0].strip()
+            elif "```yml" in response:
+                yaml_blocks = response.split("```yml")
+                if len(yaml_blocks) > 1:
+                    yaml_content = yaml_blocks[1].split("```")[0].strip()
+            elif "```" in response:
+                # Try to extract from generic code block
+                yaml_blocks = response.split("```")
+                if len(yaml_blocks) > 1:
+                    yaml_content = yaml_blocks[1].strip()
+            
+            if not yaml_content:
+                # If no code blocks found, try to parse the entire response
+                yaml_content = response.strip()
+            
             # Parse YAML response
-            decision = yaml.safe_load(response)
+            decision = yaml.safe_load(yaml_content)
             if not decision or "tool" not in decision:
                 raise ValueError("Invalid tool decision format")
             
             return decision
         except Exception as e:
             logger.error(f"Failed to parse tool decision: {str(e)}")
+            logger.error(f"Response was: {response}")
             return {
                 "tool": "finish",
                 "reason": f"Error parsing tool decision: {str(e)}",
@@ -856,137 +834,6 @@ def create_edit_agent() -> Flow:
     return Flow(start=read_target)
 
 #############################################
-# Project Structure Generator Node
-#############################################
-class ProjectStructureGeneratorNode(Node):
-    def prep(self, shared: Dict[str, Any]) -> Dict[str, Any]:
-        # Get the user query and project type from shared
-        user_query = shared.get("user_query", "")
-        
-        # Parse the query to determine project type and structure
-        prompt = f"""
-Analyze the following project generation request and determine the project structure.
-Return a YAML object with the following structure:
-
-```yaml
-project_type: <type>  # e.g., "react", "rest_api", etc.
-structure:
-  - path: <file_path>
-    content: |
-      <file_content>
-    type: <file_type>  # e.g., "config", "component", "test", etc.
-  - path: <file_path>
-    content: |
-      <file_content>
-    type: <file_type>
-```
-
-Rules:
-1. Include ALL necessary files for a complete project structure
-2. For each file, provide the complete content
-3. Group related files together
-4. Include configuration files first
-5. Follow best practices for the project type
-6. Include comments and documentation
-
-User request: {user_query}
-
-Return ONLY the YAML object with the project structure.
-"""
-        
-        # Call LLM to generate project structure
-        response = call_llm(prompt)
-        
-        try:
-            # Parse YAML response
-            project_structure = yaml.safe_load(response)
-            if not project_structure or "structure" not in project_structure:
-                raise ValueError("Invalid project structure format")
-            
-            return project_structure
-        except Exception as e:
-            logger.error(f"Failed to parse project structure: {str(e)}")
-            raise
-    
-    def exec(self, project_structure: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # Return the list of files to create
-        return project_structure["structure"]
-    
-    def post(self, shared: Dict[str, Any], prep_res: Dict[str, Any], exec_res: List[Dict[str, Any]]) -> str:
-        # Store the project structure in shared for batch processing
-        shared["project_structure"] = exec_res
-        return "generate_files"
-
-#############################################
-# Batch File Generator Node
-#############################################
-class BatchFileGeneratorNode(BatchNode):
-    def prep(self, shared: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # Get the project structure from shared
-        project_structure = shared.get("project_structure", [])
-        if not project_structure:
-            logger.warning("No project structure found")
-            return []
-        
-        # Get working directory
-        working_dir = shared.get("working_dir", "")
-        
-        # Prepare file creation operations
-        operations = []
-        for file_info in project_structure:
-            path = file_info["path"]
-            content = file_info["content"]
-            file_type = file_info["type"]
-            
-            # Ensure path is relative to working directory
-            full_path = os.path.join(working_dir, path) if working_dir else path
-            
-            operations.append({
-                "target_file": full_path,
-                "content": content,
-                "type": file_type
-            })
-        
-        return operations
-    
-    def exec(self, op: Dict[str, Any]) -> Tuple[bool, str]:
-        # Create directory if it doesn't exist
-        target_file = op["target_file"]
-        os.makedirs(os.path.dirname(target_file), exist_ok=True)
-        
-        # Create the file
-        return insert_file(target_file, op["content"])
-    
-    def post(self, shared: Dict[str, Any], prep_res: List[Dict[str, Any]], exec_res_list: List[Tuple[bool, str]]) -> str:
-        # Check if all operations were successful
-        all_successful = all(success for success, _ in exec_res_list)
-        
-        # Format results for history
-        result_details = [
-            {
-                "success": success,
-                "message": message,
-                "file": op["target_file"],
-                "type": op["type"]
-            }
-            for (success, message), op in zip(exec_res_list, prep_res)
-        ]
-        
-        # Update history with generation results
-        history = shared.get("history", [])
-        if history:
-            history[-1]["result"] = {
-                "success": all_successful,
-                "operations": len(exec_res_list),
-                "details": result_details
-            }
-        
-        # Clear project structure after processing
-        shared.pop("project_structure", None)
-        
-        return "default"
-
-#############################################
 # Main Flow
 #############################################
 def create_main_flow() -> Flow:
@@ -999,8 +846,6 @@ def create_main_flow() -> Flow:
     insert_action = InsertFileAction()
     edit_agent = create_edit_agent()
     format_response = FormatResponseNode()
-    project_generator = ProjectStructureGeneratorNode()
-    batch_generator = BatchFileGeneratorNode()
     
     # Connect main agent to action nodes
     main_agent - "read_file" >> read_action
@@ -1009,11 +854,7 @@ def create_main_flow() -> Flow:
     main_agent - "delete_file" >> delete_action
     main_agent - "insert_file" >> insert_action
     main_agent - "edit_file" >> edit_agent
-    main_agent - "generate_project" >> project_generator
     main_agent - "finish" >> format_response
-    
-    # Connect project generator to batch generator
-    project_generator - "generate_files" >> batch_generator
     
     # Connect action nodes back to main agent using default action
     read_action >> main_agent
@@ -1022,17 +863,15 @@ def create_main_flow() -> Flow:
     delete_action >> main_agent
     insert_action >> main_agent
     edit_agent >> main_agent
-    batch_generator >> main_agent
     
-    # Create flow with increased iteration limit for project generation
+    # Create flow
     flow = Flow(start=main_agent)
-    flow.set_params({"max_iterations": 30})  # Increased limit for project generation
+    flow.set_params({"max_iterations": 10})
     return flow
 
 # Create the main flow
 coding_agent_flow = create_main_flow()
 
-# Add a function to run the flow with custom iteration limit
 def run_flow_with_limit(shared: Dict[str, Any], max_iterations: int = 10) -> None:
     """
     Run the coding agent flow with a custom iteration limit.
